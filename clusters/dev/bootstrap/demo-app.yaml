@@ -1,0 +1,34 @@
+# An ArgoCD `Application` — the bridge between Git and the cluster.
+# This tells ArgoCD: "watch apps/demo-app/ in this repo, deploy it to the demo namespace,
+# and keep them in sync forever."
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-app
+  namespace: argocd
+  # Required so deleting the Application also deletes everything it created.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/Suliman8/p5-gitops-zero-trust.git
+    path: apps/demo-app
+    targetRevision: main
+
+  destination:
+    # The cluster ArgoCD itself runs in (the special "in-cluster" alias).
+    server: https://kubernetes.default.svc
+    namespace: demo
+
+  syncPolicy:
+    automated:
+      # Delete cluster resources that are removed from Git.
+      prune: true
+      # Revert manual cluster changes back to what Git says.
+      selfHeal: true
+    syncOptions:
+      # Auto-create the `demo` namespace if it doesn't exist
+      # (we also declare it in apps/demo-app/namespace.yaml as a safety net).
+      - CreateNamespace=true

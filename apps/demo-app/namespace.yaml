@@ -1,0 +1,6 @@
+# The namespace this app lives in. We declare it in Git so ArgoCD creates it
+# automatically on first sync — no manual `kubectl create ns` needed.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
