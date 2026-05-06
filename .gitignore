@@ -1,0 +1,48 @@
+# --- Secrets & credentials (NEVER commit these) ---
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.kubeconfig
+kubeconfig*
+.env
+.env.*
+secrets/
+*-secret.yaml
+*.token
+
+# --- ArgoCD / SPIRE / Vault local state ---
+argocd-initial-admin-password*
+spire-server.crt
+spire-agent.crt
+vault-init.json
+vault-unseal-keys*
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Editor temp files ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Build / cache ---
+node_modules/
+__pycache__/
+*.pyc
+.cache/
+dist/
+build/
+
+# --- Backup files ---
+*.bak
+*.backup
+*.orig
+
+# --- Claude Code local cache ---
+.claude/
