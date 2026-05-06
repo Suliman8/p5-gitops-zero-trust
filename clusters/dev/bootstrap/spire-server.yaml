@@ -27,5 +27,3 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      # Apply the namespace before everything else (otherwise the SA/RBAC race).
-      - ServerSideApply=true
