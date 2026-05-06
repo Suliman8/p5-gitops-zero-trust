@@ -1,0 +1,31 @@
+# ArgoCD Application — tells ArgoCD to deploy the SPIRE Server kustomization.
+# Same pattern as demo-app.yaml; only the source path and destination namespace differ.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spire-server
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/Suliman8/p5-gitops-zero-trust.git
+    path: infrastructure/spire
+    targetRevision: main
+
+  destination:
+    server: https://kubernetes.default.svc
+    # The kustomization itself creates the spire-server namespace, so we just
+    # tell ArgoCD this Application's "default" namespace is spire-server.
+    namespace: spire-server
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # Apply the namespace before everything else (otherwise the SA/RBAC race).
+      - ServerSideApply=true

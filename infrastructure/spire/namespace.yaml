@@ -1,0 +1,8 @@
+# Dedicated namespace for the SPIRE control plane.
+# Isolation = clearer RBAC boundaries + easier to find / debug / delete.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spire-server
+  labels:
+    name: spire-server

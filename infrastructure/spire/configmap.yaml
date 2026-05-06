@@ -1,0 +1,83 @@
+# SPIRE Server configuration.
+#
+# SPIRE uses HCL (HashiCorp Configuration Language). We wrap it in a K8s
+# ConfigMap so we can ship it via GitOps — the StatefulSet mounts this CM
+# as a file at /run/spire/config/server.conf and SPIRE reads it on boot.
+#
+# Three big sections:
+#   1) `server { ... }`     — core settings (trust domain, bind port, data dir)
+#   2) `plugins { ... }`    — what plugins SPIRE loads (datastore, key manager, attestors)
+#   3) `health_checks { }`  — exposes /live and /ready over HTTP for K8s probes
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-server-config
+  namespace: spire-server
+data:
+  server.conf: |
+    server {
+      # Listen on all interfaces inside the pod, gRPC port 8081.
+      bind_address = "0.0.0.0"
+      bind_port = "8081"
+
+      # Our cluster's "passport country code" — must be unique per organization.
+      # All SVIDs we issue look like: spiffe://p5.local/...
+      trust_domain = "p5.local"
+
+      # Where SPIRE keeps its on-disk state (mounted from a PVC by the StatefulSet).
+      data_dir = "/run/spire/data"
+
+      # DEBUG = noisy but easy to learn from. Switch to INFO in prod.
+      log_level = "DEBUG"
+
+      # CA cert defaults for the auto-generated SPIRE root CA.
+      ca_subject = {
+        country = ["US"],
+        organization = ["SPIRE"],
+        common_name = "",
+      }
+    }
+
+    plugins {
+      # ----- DataStore: where SPIRE remembers registrations + agent records -----
+      # SQLite on local disk = simplest. Prod would use Postgres/MySQL for HA.
+      DataStore "sql" {
+        plugin_data {
+          database_type = "sqlite3"
+          connection_string = "/run/spire/data/datastore.sqlite3"
+        }
+      }
+
+      # ----- NodeAttestor: how SPIRE verifies a node-attesting agent is legit -----
+      # k8s_psat = "Kubernetes Projected Service Account Token".
+      # Each SPIRE Agent (Week 3) will mount a projected SA token; the server
+      # calls K8s TokenReview API to confirm it's real and which cluster/node
+      # it came from. Far safer than the older `k8s_sat` (used long-lived tokens).
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          clusters = {
+            "p5-dev" = {
+              # Only agents using this SA in this namespace can attest.
+              service_account_allow_list = ["spire-server:spire-agent"]
+            }
+          }
+        }
+      }
+
+      # ----- KeyManager: where SPIRE stores its signing keys -----
+      # "disk" writes them to the pod's PV. Prod might use HSM or cloud KMS.
+      KeyManager "disk" {
+        plugin_data {
+          keys_path = "/run/spire/data/keys.json"
+        }
+      }
+    }
+
+    # K8s liveness/readiness probes hit these HTTP endpoints.
+    health_checks {
+      listener_enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+      live_path = "/live"
+      ready_path = "/ready"
+    }

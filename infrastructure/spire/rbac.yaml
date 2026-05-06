@@ -1,0 +1,38 @@
+# RBAC for SPIRE Server.
+#
+# Why both resources?
+# - ClusterRole = WHAT permissions exist
+# - ClusterRoleBinding = WHO gets them (our spire-server ServiceAccount)
+#
+# What permissions does SPIRE Server actually need?
+#  1) tokenreviews.authentication.k8s.io (CREATE) — to ask K8s "is this node token real?"
+#     This is the heart of the PSAT (Projected Service Account Token) node attestor.
+#  2) nodes (GET) — to look up node info for selectors (region, instance type, etc.)
+#  3) pods (GET) — useful when correlating workloads (Week 3 agent work).
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-server-trust-role
+rules:
+  # Validate K8s service-account tokens — required by k8s_psat NodeAttestor.
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+  # Read node and pod info for selectors / correlation.
+  - apiGroups: [""]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-server-trust-role-binding
+subjects:
+  - kind: ServiceAccount
+    name: spire-server
+    namespace: spire-server
+roleRef:
+  kind: ClusterRole
+  name: spire-server-trust-role
+  apiGroup: rbac.authorization.k8s.io
