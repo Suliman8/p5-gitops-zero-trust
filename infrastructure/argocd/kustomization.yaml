@@ -1,0 +1,10 @@
+# ArgoCD install — pinned to a specific upstream release for reproducibility.
+# Anyone cloning this repo and running `kubectl apply -k infrastructure/argocd/`
+# will get the EXACT same ArgoCD version (v3.3.9), not a moving target.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+resources:
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.3.9/manifests/install.yaml
