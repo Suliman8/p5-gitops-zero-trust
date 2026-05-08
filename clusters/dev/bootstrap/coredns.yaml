@@ -1,0 +1,26 @@
+# ArgoCD Application that owns the kube-system CoreDNS ConfigMap.
+# Same App-of-Apps pattern as demo-app and spire-server.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: coredns
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Suliman8/p5-gitops-zero-trust.git
+    path: infrastructure/coredns
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # The ConfigMap already exists (created by kind). Take ownership without
+      # complaining about pre-existing fields.
+      - ServerSideApply=true
