@@ -25,3 +25,30 @@ patches:
       - op: add
         path: /spec/ports/1/nodePort
         value: 30443
+
+  # Use locally cached images instead of always re-pulling from upstream registries.
+  # In a kind dev cluster the node DNS can break (`172.20.0.1:53 server misbehaving`)
+  # and `imagePullPolicy: Always` then fails even when the image is already on the node.
+  # `IfNotPresent` is the right policy for pinned image tags anyway — they are immutable.
+  - target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/part-of=argocd
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target:
+      kind: StatefulSet
+      labelSelector: app.kubernetes.io/part-of=argocd
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  # The dex Deployment has an initContainer (`copyutil`) that also defaults to Always.
+  - target:
+      kind: Deployment
+      name: argocd-dex-server
+    patch: |
+      - op: replace
+        path: /spec/template/spec/initContainers/0/imagePullPolicy
+        value: IfNotPresent
