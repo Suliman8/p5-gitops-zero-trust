@@ -1,0 +1,79 @@
+# The agent's "instruction manual" — written in HCL (same as Terraform).
+#
+# The DaemonSet mounts this ConfigMap as a file at
+# /run/spire/config/agent.conf, and the agent reads it on boot.
+#
+# Three sections:
+#   1) agent { ... }    — core settings (where the Server is, trust domain, socket path)
+#   2) plugins { ... }  — what plugins to load (node attestor, workload attestors, key manager)
+#   3) health_checks    — exposes /live and /ready for K8s probes
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent
+  namespace: spire-server
+data:
+  agent.conf: |
+    agent {
+        # Where the agent stores ephemeral state (its current SVID, etc.).
+        # We use an emptyDir volume in the DaemonSet — agent state is short-lived.
+        data_dir = "/run/spire"
+        log_level = "INFO"
+
+        # The SPIRE Server we built in Week 2. Headless service in `spire-server` ns.
+        server_address = "spire-server.spire-server.svc.cluster.local"
+        server_port = "8081"
+
+        # Where workloads will look for the Workload API socket.
+        # Must match the hostPath mount in daemonset.yaml.
+        socket_path = "/run/spire/agent-sockets/spire-agent.sock"
+
+        # Trust domain MUST be identical to the Server's. Mismatch = no SVIDs issued.
+        trust_domain = "p5.local"
+
+        # Insecure bootstrap = "trust the first response we get from the Server".
+        # OK for learning. In production we'd pre-distribute the Server's CA cert
+        # via a `spire-bundle` ConfigMap so the very first connection is verified.
+        insecure_bootstrap = true
+    }
+
+    plugins {
+        # How the agent proves "I am a real node in the p5-dev cluster".
+        # Uses the projected ServiceAccount token (PSAT) — the SPIRE Server
+        # asks K8s "is this token real?" and gets a yes/no.
+        NodeAttestor "k8s_psat" {
+            plugin_data {
+                cluster = "p5-dev"
+            }
+        }
+
+        # How the agent inspects pods asking for SVIDs.
+        # `verify_kubelet_ca = false` is fine for kind dev clusters where
+        # kubelet uses self-signed certs and we don't want to manage trust to it.
+        WorkloadAttestor "k8s" {
+            plugin_data {
+                skip_kubelet_verification = true
+            }
+        }
+
+        # Backup attestor — uses Linux process facts (UID, GID, binary path)
+        # for non-K8s workloads or to add extra checks.
+        WorkloadAttestor "unix" {
+            plugin_data {}
+        }
+
+        # Where the agent stores its own private key.
+        # `memory` = key lives only in RAM, regenerated if the pod restarts.
+        # That's fine — a new SVID is issued per pod lifetime anyway.
+        KeyManager "memory" {
+            plugin_data {}
+        }
+    }
+
+    health_checks {
+        listener_enabled = true
+        bind_address = "0.0.0.0"
+        bind_port = "8082"
+        live_path = "/live"
+        ready_path = "/ready"
+    }

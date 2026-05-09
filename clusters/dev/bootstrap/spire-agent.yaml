@@ -1,0 +1,40 @@
+# ArgoCD Application — tells ArgoCD to deploy the SPIRE Agent kustomization
+# (the 5 YAMLs we wrote in infrastructure/spire-agent/).
+#
+# Why a separate Application from spire-server?
+#   - Server is a StatefulSet (cluster-wide singleton).
+#   - Agent is a DaemonSet (one per node).
+# Keeping them in separate Apps lets us sync, roll back, or pause one
+# without touching the other. Cleaner separation of concerns.
+#
+# Same Git repo, different `path` — that's the GitOps pattern: each
+# logical component is its own folder, each folder is its own App.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spire-agent
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/Suliman8/p5-gitops-zero-trust.git
+    path: infrastructure/spire-agent
+    targetRevision: main
+
+  destination:
+    server: https://kubernetes.default.svc
+    # The agent lives in the same namespace as the Server (spire-server).
+    # Why? Convention — SPIRE control-plane components stay together.
+    # Workloads using the agent live in OTHER namespaces and reach it
+    # via the hostPath socket, not via in-cluster networking.
+    namespace: spire-server
+
+  syncPolicy:
+    automated:
+      prune: true      # If we delete a YAML from Git, ArgoCD deletes it from cluster
+      selfHeal: true   # If someone kubectl-edits a resource, ArgoCD reverts it
+    syncOptions:
+      - CreateNamespace=true

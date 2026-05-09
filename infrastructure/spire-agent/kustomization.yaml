@@ -1,0 +1,9 @@
+# Bundles all SPIRE Agent resources into one ArgoCD-deployable unit.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - serviceaccount.yaml
+  - rbac.yaml
+  - configmap.yaml
+  - daemonset.yaml

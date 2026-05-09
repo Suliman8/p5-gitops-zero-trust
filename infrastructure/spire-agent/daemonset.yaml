@@ -1,0 +1,111 @@
+# DaemonSet = "run exactly one pod on every node". Perfect for SPIRE Agents:
+# each node needs its own local agent so workloads can reach it via a Unix socket.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spire-agent
+  namespace: spire-server
+  labels:
+    app: spire-agent
+spec:
+  selector:
+    matchLabels:
+      app: spire-agent
+  template:
+    metadata:
+      labels:
+        app: spire-agent
+    spec:
+      serviceAccountName: spire-agent
+
+      # Tolerate the control-plane taint so the agent runs on ALL 3 nodes
+      # (control-plane + 2 workers). Without this, K8s wouldn't schedule
+      # the agent on `p5-dev-control-plane`.
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+
+      # Allow the agent to see host process IDs. Needed by the workload
+      # attestor to inspect a pod's PID and confirm "yes, this PID belongs
+      # to that pod". Without it, attestation cannot work.
+      hostPID: true
+
+      # The agent does NOT need a public IP — it dials out to Server.
+      hostNetwork: false
+      dnsPolicy: ClusterFirstWithHostNet
+
+      containers:
+        - name: spire-agent
+          image: ghcr.io/spiffe/spire-agent:1.14.6
+          # Lesson learned in the recovery: pinned tags are immutable, so
+          # IfNotPresent avoids registry calls when DNS goes flaky.
+          imagePullPolicy: IfNotPresent
+
+          args:
+            - "-config"
+            - "/run/spire/config/agent.conf"
+
+          ports:
+            - containerPort: 8082
+              name: healthz
+
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8082
+            initialDelaySeconds: 15
+            periodSeconds: 60
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+          volumeMounts:
+            # The agent's config file (mounted from the ConfigMap).
+            - name: spire-config
+              mountPath: /run/spire/config
+              readOnly: true
+
+            # Where the agent puts its Workload API socket. We mount
+            # a hostPath so workloads on this same node can find it at
+            # /run/spire/agent-sockets/spire-agent.sock.
+            - name: spire-agent-socket
+              mountPath: /run/spire/agent-sockets
+
+            # The projected ServiceAccount token used for PSAT attestation.
+            # K8s auto-rotates this token; SPIRE Server validates it.
+            - name: spire-token
+              mountPath: /var/run/secrets/tokens
+
+      volumes:
+        - name: spire-config
+          configMap:
+            name: spire-agent
+
+        # hostPath: a directory on the actual node, shared between this
+        # agent pod and any workload pod that mounts the same path.
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/agent-sockets
+            type: DirectoryOrCreate
+
+        # `audience: spire-server` matches the audience SPIRE Server
+        # is configured to accept. expirationSeconds: short-lived (~1h).
+        - name: spire-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: spire-agent
+                  audience: spire-server
+                  expirationSeconds: 7200
