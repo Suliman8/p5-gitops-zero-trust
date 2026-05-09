@@ -31,8 +31,12 @@ spec:
       # to that pod". Without it, attestation cannot work.
       hostPID: true
 
-      # The agent does NOT need a public IP — it dials out to Server.
-      hostNetwork: false
+      # hostNetwork: true is REQUIRED for the K8s workload attestor.
+      # The attestor talks to the local kubelet on 127.0.0.1:10250 to look
+      # up pod metadata. Without hostNetwork, 127.0.0.1 is the agent pod's
+      # own loopback (not the node), and kubelet is unreachable —
+      # workload identity issuance fails with "no identity issued".
+      hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
 
       containers:
