@@ -15,6 +15,15 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "nodes"]
     verbs: ["get", "list"]
+  # `nodes/proxy` is needed by the K8s WorkloadAttestor's "new container
+  # locator" (default in spire-agent 1.14+). It calls
+  #   GET /api/v1/nodes/<node>/proxy/pods
+  # to discover pod metadata via the API server proxy instead of talking
+  # to kubelet directly. Without this, workload attestation fails with
+  # 403 Forbidden and pods get "no identity issued".
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
