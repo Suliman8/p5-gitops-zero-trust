@@ -37,13 +37,11 @@ data:
         common_name = "",
       }
 
-      # Unix socket for the privileged "admin" API surface (entry CRUD,
-      # bundle ops, etc.). This is what the spire-controller-manager
-      # sidecar talks to. The socket lives in an emptyDir shared between
-      # the two containers — Unix-socket file permissions are the only
-      # auth boundary, which is fine because both containers are in the
-      # same pod and pod-level isolation is the trust boundary.
-      admin_socket_path = "/tmp/spire-server/private/api.sock"
+      # NOTE: the Server's local admin Unix socket — used by the
+      # spire-controller-manager sidecar — already defaults to
+      # /tmp/spire-server/private/api.sock in SPIRE 1.14 (server.socket_path).
+      # We mount an emptyDir at that path so the sidecar in the same pod
+      # can reach it. No `socket_path = ...` override needed.
     }
 
     plugins {
