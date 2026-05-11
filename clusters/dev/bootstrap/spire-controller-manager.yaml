@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spire-controller-manager
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Suliman8/p5-gitops-zero-trust.git
+    path: infrastructure/spire-controller-manager
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    # Destination namespace is only used for namespaced resources.
+    # CRDs are cluster-scoped, so this is effectively a placeholder.
+    namespace: spire-server
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      # CRDs from kubebuilder are big (>256KB once schemas are embedded).
+      # client-side apply silently truncates the annotation; server-side
+      # apply preserves the full schema. This is the one place we *do*
+      # want ServerSideApply (Week 2 lesson learned the hard way).
+      - ServerSideApply=true

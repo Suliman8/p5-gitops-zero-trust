@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The "spire-controller-manager" package, in three pieces:
+#   crds/   -> Cluster-scoped CRDs (ClusterSPIFFEID etc.)
+#   rbac    -> ClusterRole + Binding so the spire-server ServiceAccount
+#              can read/write those CRs (added in step 4.2 alongside the
+#              sidecar — the controller binary itself runs inside the
+#              spire-server pod, so it inherits the spire-server SA).
+#
+# Note: the controller manager *workload* (the container) lives in the
+# spire-server StatefulSet as a sidecar, NOT here. This package owns
+# only the cluster-scoped API surface (CRDs + RBAC).
+resources:
+  - crds

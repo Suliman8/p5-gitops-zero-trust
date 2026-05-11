@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Official CRDs from spire-controller-manager v0.6.4
+# Source: https://github.com/spiffe/spire-controller-manager/tree/v0.6.4/config/crd/bases
+#
+# These CRDs MUST exist before any ClusterSPIFFEID / ClusterStaticEntry /
+# ClusterFederatedTrustDomain CR is created, otherwise ArgoCD reports
+# "resource mapping not found" errors when reconciling the entry CRs.
+resources:
+  - spire.spiffe.io_clusterspiffeids.yaml
+  - spire.spiffe.io_clusterstaticentries.yaml
+  - spire.spiffe.io_clusterfederatedtrustdomains.yaml
