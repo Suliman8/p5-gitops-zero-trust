@@ -13,3 +13,5 @@ kind: Kustomization
 # only the cluster-scoped API surface (CRDs + RBAC).
 resources:
   - crds
+  - config.yaml
+  - rbac.yaml

@@ -65,6 +65,11 @@ spec:
             - name: spire-data
               mountPath: /run/spire/data
               readOnly: false
+            # Shared with the spire-controller-manager sidecar. SPIRE
+            # writes its admin Unix socket here; the sidecar reads it.
+            - name: spire-server-socket
+              mountPath: /tmp/spire-server/private
+              readOnly: false
           resources:
             requests:
               cpu: "50m"
@@ -72,10 +77,68 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+
+        # ---------------------------------------------------------------
+        # spire-controller-manager — sidecar that translates ClusterSPIFFEID
+        # / ClusterStaticEntry CRDs into SPIRE registration entries via
+        # the admin socket above. Runs in the same pod (Week 4 design).
+        # ---------------------------------------------------------------
+        - name: spire-controller-manager
+          image: ghcr.io/spiffe/spire-controller-manager:0.6.4
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config=/run/controller-manager/config/controller-manager-config.yaml
+          env:
+            # The webhook server requires SPIRE-issued TLS certs. We keep
+            # the wiring simple in W4 by turning the admission-time
+            # validator off — invalid CRs surface in `status` instead.
+            - name: ENABLE_WEBHOOKS
+              value: "false"
+          ports:
+            - name: ctrl-health
+              containerPort: 8083
+              protocol: TCP
+            - name: ctrl-metrics
+              containerPort: 8082
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: ctrl-health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: ctrl-health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: spire-server-socket
+              mountPath: /tmp/spire-server/private
+              readOnly: true
+            - name: controller-manager-config
+              mountPath: /run/controller-manager/config
+              readOnly: true
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
       volumes:
         - name: spire-config
           configMap:
             name: spire-server-config
+        - name: controller-manager-config
+          configMap:
+            name: spire-controller-manager-config
+        # The socket bridge between SPIRE Server and Controller Manager.
+        # emptyDir is the right primitive: ephemeral, pod-scoped, both
+        # containers can rw — exactly what a Unix socket needs.
+        - name: spire-server-socket
+          emptyDir: {}
   # Persistent storage for the SQLite DB and CA keys.
   # Lost = lost trust → all issued SVIDs become invalid.
   volumeClaimTemplates:

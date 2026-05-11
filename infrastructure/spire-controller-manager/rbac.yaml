@@ -1,0 +1,99 @@
+# RBAC for the spire-controller-manager sidecar.
+#
+# The controller runs INSIDE the spire-server pod as a sidecar container,
+# so it shares the `spire-server` ServiceAccount. Rather than create a
+# second SA, we just grant the existing one the additional permissions
+# the controller needs.
+#
+# Rules transcribed from the official v0.6.4 manifests:
+#   config/rbac/role.yaml           (cluster-wide reconciler perms)
+#   config/rbac/leader_election_role.yaml (namespaced leader-election perms)
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-controller-manager
+rules:
+  # Read pods/namespaces/nodes/endpoints to figure out *which* workloads
+  # should match a ClusterSPIFFEID selector. Read-only.
+  - apiGroups: [""]
+    resources: ["endpoints", "namespaces", "nodes", "pods"]
+    verbs: ["get", "list", "watch"]
+
+  # Patch the ValidatingWebhookConfiguration the controller manages
+  # (rotates its own webhook CA bundle). Read-only path is enough when
+  # ENABLE_WEBHOOKS=false, but granting these now means flipping the
+  # webhook on later doesn't need an RBAC migration.
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingwebhookconfigurations"]
+    verbs: ["get", "list", "patch", "watch"]
+
+  # Full CRUD on the SPIRE CRDs the controller owns.
+  - apiGroups: ["spire.spiffe.io"]
+    resources:
+      - clusterfederatedtrustdomains
+      - clusterspiffeids
+      - clusterstaticentries
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+
+  # Finalizer + status subresource access.
+  - apiGroups: ["spire.spiffe.io"]
+    resources:
+      - clusterfederatedtrustdomains/finalizers
+      - clusterspiffeids/finalizers
+      - clusterstaticentries/finalizers
+    verbs: ["update"]
+  - apiGroups: ["spire.spiffe.io"]
+    resources:
+      - clusterfederatedtrustdomains/status
+      - clusterspiffeids/status
+      - clusterstaticentries/status
+    verbs: ["get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-controller-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spire-controller-manager
+subjects:
+  - kind: ServiceAccount
+    name: spire-server
+    namespace: spire-server
+---
+# Leader election permissions — namespaced to spire-server only so we
+# don't leak the (mildly powerful) configmap-write perm cluster-wide.
+# controller-runtime defaults to coordination.k8s.io/Lease for the lock,
+# but historically used ConfigMaps; granting both lets us flip the
+# resourceLock without re-issuing RBAC.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spire-controller-manager-leader-election
+  namespace: spire-server
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spire-controller-manager-leader-election
+  namespace: spire-server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: spire-controller-manager-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: spire-server
+    namespace: spire-server

@@ -1,0 +1,53 @@
+# Configuration for the spire-controller-manager binary.
+#
+# The binary takes a single flag: --config=<file>. Everything else comes
+# from this YAML. Schema source:
+#   https://github.com/spiffe/spire-controller-manager/blob/v0.6.4/api/v1alpha1/controllermanagerconfig_types.go
+#
+# Notes on a few non-obvious fields:
+#
+#   spireServerSocketPath
+#     The Unix socket exposed by the SPIRE Server's admin API. The Server
+#     and the Controller Manager share an emptyDir volume in the same pod;
+#     that's how this socket reaches across the two containers. Talking
+#     locally over a unix socket means we don't need cert auth or TCP.
+#
+#   validatingWebhookConfigurationName
+#     REQUIRED field — the binary errors out at startup if it's empty
+#     (cmd/main.go in v0.6.4). We set ENABLE_WEBHOOKS=false on the
+#     container, so the admission-time webhook server doesn't actually
+#     run; validation still happens at reconcile time and shows up in the
+#     CR's status. Trade-off: invalid CRs are accepted by the API server
+#     and only rejected when the controller tries to apply them.
+#
+#   ignoreNamespaces
+#     System namespaces whose pods should never receive SPIFFE IDs.
+#     Saves the controller from waking up on every kube-system event.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-controller-manager-config
+  namespace: spire-server
+data:
+  controller-manager-config.yaml: |
+    apiVersion: spire.spiffe.io/v1alpha1
+    kind: ControllerManagerConfig
+    metadata:
+      name: config
+    clusterName: p5-dev
+    trustDomain: p5.local
+    clusterDomain: cluster.local
+    validatingWebhookConfigurationName: spire-controller-manager-webhook
+    spireServerSocketPath: /tmp/spire-server/private/api.sock
+    ignoreNamespaces:
+      - kube-system
+      - kube-public
+      - kube-node-lease
+      - local-path-storage
+      - argocd
+      - spire-server
+    metrics:
+      bindAddress: 0.0.0.0:8082
+    health:
+      healthProbeBindAddress: 0.0.0.0:8083
+    logLevel: info
