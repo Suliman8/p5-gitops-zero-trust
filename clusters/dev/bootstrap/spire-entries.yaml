@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spire-entries
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Suliman8/p5-gitops-zero-trust.git
+    path: infrastructure/spire-entries
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    # CRs are cluster-scoped, namespace value is irrelevant.
+    namespace: spire-server
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

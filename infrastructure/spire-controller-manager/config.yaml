@@ -39,6 +39,20 @@ data:
     clusterDomain: cluster.local
     validatingWebhookConfigurationName: spire-controller-manager-webhook
     spireServerSocketPath: /tmp/spire-server/private/api.sock
+
+    # Make every ClusterSPIFFEID-generated entry chain to the cluster's
+    # node-alias entry (k8s-cluster/<cluster>). Without this, the
+    # controller's default template renders
+    #   spiffe://<td>/spire/agent/k8s_psat/<cluster>/{{ .NodeMeta.UID }}
+    # which uses the K8s Node UID — that does NOT match the
+    # PSAT-attested agent's actual SVID path (which uses a SPIRE-generated
+    # UUID, not the node UID). Result: no agent matches the parent, so
+    # workloads get "no identity issued."
+    # The node alias entry (created via ClusterStaticEntry) has selector
+    # k8s_psat:cluster:p5-dev so it transparently covers every PSAT agent
+    # in this cluster.
+    parentIDTemplate: "spiffe://{{ .TrustDomain }}/k8s-cluster/{{ .ClusterName }}"
+
     ignoreNamespaces:
       - kube-system
       - kube-public

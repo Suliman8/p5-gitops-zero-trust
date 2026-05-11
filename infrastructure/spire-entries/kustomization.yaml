@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Workload identity registration entries, expressed as the CRDs owned by
+# the SPIRE Controller Manager. ArgoCD reconciles these from Git, the
+# controller manager translates them into rows in the SPIRE Server's
+# datastore. This is the "GitOps debt" from Week 3 paid down:
+# entries are now PR-reviewable YAML, not hand-typed `spire-server entry
+# create` invocations that vanish on cluster recreation.
+resources:
+  - node-alias.yaml
+  - demo-app.yaml

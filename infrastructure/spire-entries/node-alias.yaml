@@ -1,0 +1,33 @@
+# Node alias for the p5-dev cluster.
+#
+# What this is, in plain terms:
+#   "Treat every agent that PSAT-attested as a member of cluster p5-dev
+#    as if it had the SPIFFE ID spiffe://p5.local/k8s-cluster/p5-dev."
+#
+# Why we need an alias at all:
+#   Each spire-agent attests under its own per-node SPIFFE ID
+#   (spiffe://p5.local/spire/agent/k8s_psat/p5-dev/<uuid>). If we had to
+#   list every agent as a parent for every workload entry, every
+#   restart that re-attests an agent would require new entries. Instead
+#   we give "the whole fleet" a single alias and chain workload entries
+#   to that alias.
+#
+# ClusterStaticEntry vs ClusterSPIFFEID:
+#   - ClusterStaticEntry: literal selectors, fixed parent. Used when you
+#     KNOW the SPIFFE ID and the matching predicate exactly. Perfect for
+#     a node alias.
+#   - ClusterSPIFFEID: template + label selectors. Used for *workloads*
+#     where the controller has to discover matching pods at runtime.
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterStaticEntry
+metadata:
+  name: k8s-cluster-p5-dev-node-alias
+spec:
+  spiffeID: spiffe://p5.local/k8s-cluster/p5-dev
+  # The "real" parent for any PSAT-attested node is the SPIRE Server itself.
+  parentID: spiffe://p5.local/spire/server
+  # Selector type comes from the k8s_psat NodeAttestor (Week 2 plugin).
+  # Every agent that successfully PSAT-attests under cluster p5-dev
+  # automatically picks up this alias — no per-agent entry needed.
+  selectors:
+    - k8s_psat:cluster:p5-dev
