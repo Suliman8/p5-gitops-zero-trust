@@ -46,3 +46,6 @@ build/
 
 # --- Claude Code local cache ---
 .claude/
+
+# --- Claude Code session log exports (filenames start with a date stamp) ---
+20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.txt
