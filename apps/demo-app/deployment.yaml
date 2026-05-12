@@ -1,5 +1,17 @@
-# A tiny nginx deployment used to prove the GitOps loop end-to-end.
-# ArgoCD will see this file in Git and create 2 nginx pods in the `demo` namespace.
+# demo-app — the CLIENT side of the Week 5 SPIFFE mTLS demo.
+#
+# This used to be a vanilla nginx Deployment (Week 1, just to prove the
+# GitOps loop worked). Now it runs our Go demo-client, which:
+#   - Mounts the SPIRE agent's Workload API socket
+#   - Fetches its own SVID (spiffe://p5.local/demo-app — issued by the
+#     ClusterSPIFFEID at infrastructure/spire-entries/demo-app.yaml)
+#   - Calls demo-server.demo-server.svc.cluster.local:8443 in a loop
+#   - Verifies the server's SPIFFE ID is spiffe://p5.local/demo-server
+#   - Logs OK / FAIL — so we can watch the revocation demo work.
+#
+# Same security lockdown as demo-server:
+#   runAsNonRoot, read-only rootfs, drop all caps, no priv-esc,
+#   RuntimeDefault seccomp. The agent socket is mounted read-only.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,15 +28,45 @@ spec:
       labels:
         app: demo-app
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-        - name: nginx
-          image: nginx:1.27-alpine
-          ports:
-            - containerPort: 80
+        - name: demo-client
+          image: demo-client:v0.1.0
+          imagePullPolicy: IfNotPresent
+          # Env vars override the defaults baked into main.go. Keeping
+          # them here means we can change the target service or expected
+          # server identity without rebuilding the image.
+          env:
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: unix:///run/spire/agent-sockets/spire-agent.sock
+            - name: TARGET_URL
+              value: https://demo-server.demo-server.svc.cluster.local:8443/
+            - name: EXPECTED_SERVER_ID
+              value: spiffe://p5.local/demo-server
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               cpu: "10m"
-              memory: "16Mi"
+              memory: "32Mi"
             limits:
               cpu: "100m"
               memory: "64Mi"
+          volumeMounts:
+            - name: spire-agent-socket
+              mountPath: /run/spire/agent-sockets
+              readOnly: true
+      volumes:
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/agent-sockets
+            type: Directory
