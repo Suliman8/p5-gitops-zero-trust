@@ -9,5 +9,5 @@ kind: Kustomization
 # create` invocations that vanish on cluster recreation.
 resources:
   - node-alias.yaml
-  # - demo-app.yaml         # TEMPORARILY REVOKED — Week 5 revocation demo
+  - demo-app.yaml
   - demo-server.yaml
