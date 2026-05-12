@@ -1,0 +1,36 @@
+# ArgoCD Application for demo-server.
+#
+# Same shape as demo-app.yaml — watches apps/demo-server/ in this repo
+# and reconciles to the demo-server namespace.
+#
+# Why a separate Application (rather than folding into demo-app's):
+#   - Each Application is an independent sync unit in ArgoCD. We can
+#     pause/rollback demo-server without touching demo-client.
+#   - The revocation demo (Week 5 final step) deletes the ClusterSPIFFEID
+#     for demo-app. We want that to break demo-client, NOT cause ArgoCD
+#     to mark the server's app as unhealthy too.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-server
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/Suliman8/p5-gitops-zero-trust.git
+    path: apps/demo-server
+    targetRevision: main
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo-server
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

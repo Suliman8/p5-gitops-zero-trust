@@ -1,0 +1,15 @@
+# Separate namespace from demo-app on purpose:
+#   - Blast-radius isolation. If RBAC ever leaks, a compromise on the
+#     client side cannot list/exec into server pods (different ns).
+#   - Lets us point a ClusterSPIFFEID at THIS namespace by label, so the
+#     server identity is automatically scoped to pods that live here.
+#
+# The `kubernetes.io/metadata.name` label is auto-applied by Kubernetes
+# to every namespace — it's the canonical handle for namespaceSelector
+# rules without having to add our own labels.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-server
+  labels:
+    kubernetes.io/metadata.name: demo-server

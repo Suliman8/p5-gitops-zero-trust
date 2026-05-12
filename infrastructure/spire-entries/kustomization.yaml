@@ -10,3 +10,4 @@ kind: Kustomization
 resources:
   - node-alias.yaml
   - demo-app.yaml
+  - demo-server.yaml

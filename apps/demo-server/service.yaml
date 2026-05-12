@@ -1,0 +1,27 @@
+# ClusterIP service — internal-only DNS name for the server.
+#
+# Why ClusterIP and not LoadBalancer/NodePort:
+#   Zero-trust means we don't expose this beyond the cluster. The whole
+#   POINT is that callers must be authenticated SPIRE workloads. Putting
+#   a LoadBalancer in front would expose :8443 to anyone who can reach
+#   the node IP — they would fail the mTLS handshake, but giving them
+#   the chance to even try is unnecessary.
+#
+# DNS name that demo-client will dial:
+#   demo-server.demo-server.svc.cluster.local:8443
+#   ^^^^^^^^^^^ ^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^
+#   service     namespace   cluster suffix
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-server
+  namespace: demo-server
+spec:
+  type: ClusterIP
+  selector:
+    app: demo-server
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 8443
+      protocol: TCP

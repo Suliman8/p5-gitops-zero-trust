@@ -1,0 +1,24 @@
+# Workload identity for demo-server pods.
+#
+# This is the rule that says: "every pod in the demo-server namespace
+# should be issued an SVID with SPIFFE ID spiffe://p5.local/demo-server."
+#
+# Same shape as demo-app.yaml — see that file for the full walkthrough.
+# The two differences:
+#   1. spiffeIDTemplate ends in "/demo-server" (not "/demo-app")
+#   2. namespaceSelector targets "demo-server" (not "demo")
+#
+# Once this CRD is in the cluster, the SPIRE Controller Manager sidecar
+# will:
+#   - Watch for pods matching the selector
+#   - Emit one SPIRE registration entry per pod, keyed by k8s:pod-uid
+#   - Auto-reap entries when pods are deleted
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: demo-server
+spec:
+  spiffeIDTemplate: "spiffe://{{ .TrustDomain }}/demo-server"
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: demo-server

@@ -1,0 +1,91 @@
+# demo-server Deployment.
+#
+# The interesting parts here are NOT the Go binary (any HTTP server would
+# look like this) — they are:
+#   1. The hostPath mount for the SPIRE agent socket.
+#   2. The securityContext lockdown.
+#
+# (1) Why hostPath:
+#   The SPIRE agent runs as a DaemonSet on every node and exposes its
+#   Workload API as a Unix socket at /run/spire/agent-sockets on the
+#   node host. Two different pods on the same node share a Unix socket
+#   ONLY by mounting the same hostPath. There is no other K8s primitive
+#   for this — emptyDir is per-pod, configMap is for files, CSI exists
+#   but adds a moving part we don't need yet.
+#
+#   It's SAFE here because:
+#     - readOnly: true → workload cannot tamper with the socket dir
+#     - the agent itself is what decides who-gets-what-SVID, based on
+#       the pod's UID (which the workload cannot forge)
+#
+# (2) Why the strict securityContext:
+#   The pod holds a private key (the SVID). Any privilege the container
+#   has, an attacker would inherit if they pop RCE. So we:
+#     - runAsNonRoot      → no UID 0 inside container
+#     - readOnlyRootFs    → attacker cannot drop a binary on disk
+#     - drop ALL caps     → no CAP_NET_RAW (no raw sockets), no nothing
+#     - no privilege esc  → setuid binaries cannot elevate
+#     - seccomp Runtime   → kernel-level syscall filter (the K8s default
+#                           seccomp profile, which blocks ~50 dangerous
+#                           syscalls)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-server
+  namespace: demo-server
+  labels:
+    app: demo-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-server
+  template:
+    metadata:
+      labels:
+        app: demo-server
+    spec:
+      # Pod-level securityContext — defaults for every container.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532          # nonroot UID in distroless images
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: demo-server
+          image: demo-server:v0.1.0
+          # IfNotPresent → kubelet uses the local image (which we
+          # sideloaded with `kind load`) and does NOT try to pull from
+          # a registry that doesn't exist.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          volumeMounts:
+            # Mount the agent socket dir read-only. The Go code dials
+            # unix:///run/spire/agent-sockets/spire-agent.sock — that
+            # path inside the container resolves to the file the agent
+            # owns on the host.
+            - name: spire-agent-socket
+              mountPath: /run/spire/agent-sockets
+              readOnly: true
+      volumes:
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/agent-sockets
+            type: Directory
