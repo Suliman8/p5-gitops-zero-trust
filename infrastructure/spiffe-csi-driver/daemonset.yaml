@@ -1,0 +1,108 @@
+# spiffe-csi-driver DaemonSet — one pod per node.
+#
+# This pod registers itself with the local kubelet as a CSI plugin
+# ("csi.spiffe.io"). When a workload pod requests an inline ephemeral
+# volume with that driver, the kubelet asks this pod to mount it. The
+# driver then bind-mounts the SPIRE agent's Unix socket (from the host)
+# into the requested mountpoint inside the workload pod.
+#
+# Two containers:
+#   1. node-driver-registrar — sidecar that tells the kubelet "I am here,
+#      here is my socket." Standard Kubernetes CSI scaffolding.
+#   2. spiffe-csi-driver — the actual driver binary that handles the
+#      Mount/Unmount CSI calls.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spiffe-csi-driver
+  namespace: spire-server
+  labels:
+    app.kubernetes.io/name: spiffe-csi-driver
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spiffe-csi-driver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spiffe-csi-driver
+    spec:
+      serviceAccountName: spiffe-csi-driver
+      # The driver must be able to mount into other pods' filesystems
+      # via the kubelet's mount tree, so it needs the host PID namespace
+      # and privileged mount escalations. This is normal for CSI drivers.
+      hostPID: true
+      priorityClassName: system-node-critical
+      containers:
+        # ----- Sidecar #1: CSI Node Registrar -----------------------------
+        - name: node-driver-registrar
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.11.1
+          args:
+            - --csi-address=/spiffe-csi/csi.sock
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/csi.spiffe.io/csi.sock
+            - --health-port=9809
+          ports:
+            - containerPort: 9809
+              name: healthz
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /spiffe-csi
+            - name: registration-dir
+              mountPath: /registration
+        # ----- Main container: the driver itself ---------------------------
+        - name: spiffe-csi-driver
+          image: ghcr.io/spiffe/spiffe-csi-driver:0.2.6
+          imagePullPolicy: IfNotPresent
+          args:
+            - -workload-api-socket-dir=/spire-agent-socket
+            - -plugin-name=csi.spiffe.io
+            - -csi-socket-path=/spiffe-csi/csi.sock
+          env:
+            # Tells the driver which node it's running on; used in CSI
+            # NodeGetInfo responses so the kubelet knows which volumes
+            # this driver instance can serve.
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          # Required for the driver to make mount() syscalls in the
+          # kubelet's mount namespace.
+          securityContext:
+            privileged: true
+          volumeMounts:
+            # Where the kubelet exposes its plugins socket directory.
+            - name: plugin-dir
+              mountPath: /spiffe-csi
+            # The SPIRE agent's socket directory on the host.
+            # The driver bind-mounts from here into each workload pod.
+            - name: spire-agent-socket-dir
+              mountPath: /spire-agent-socket
+            # The kubelet's "all pods' mounts" tree. The driver needs
+            # to write bind-mounts into subdirectories of this when a
+            # workload pod requests a volume.
+            - name: mountpoint-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+      volumes:
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi.spiffe.io
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: Directory
+        - name: spire-agent-socket-dir
+          hostPath:
+            path: /run/spire/agent-sockets
+            type: Directory
+        - name: mountpoint-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: Directory

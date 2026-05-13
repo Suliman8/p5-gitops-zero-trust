@@ -1,0 +1,16 @@
+# spiffe-csi-driver — vendored from the upstream project's example manifests
+# at https://github.com/spiffe/spiffe-csi/tree/main/example/config
+#
+# Why vendored instead of Helm chart:
+#   The SPIFFE org's Helm repos publish ONLY a bundled "spire" chart that
+#   includes everything (server, agent, csi-driver, controller-manager).
+#   We already run SPIRE Server/Agent/Controller Manager from separate
+#   manifests, so installing the bundled chart would conflict. The CSI
+#   driver is three small files; vendoring is simpler than picking apart
+#   the bundled chart.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - csidriver.yaml
+  - serviceaccount.yaml
+  - daemonset.yaml

@@ -1,0 +1,19 @@
+# CSIDriver — declares to the kubelet that "csi.spiffe.io" is a registered
+# CSI plugin. Cluster-scoped resource (no namespace).
+#
+# attachRequired=false → no PVC dance; this is an ephemeral inline volume.
+# podInfoOnMount=true  → kubelet passes pod metadata (name, UID, namespace)
+#                       to the driver when mounting. The driver uses pod UID
+#                       to decide which SVID to expose (matches what SPIRE
+#                       agent does via its k8s workload attestor).
+# volumeLifecycleModes=[Ephemeral] → volumes live for the pod's lifetime,
+#                       created and destroyed automatically. No PV needed.
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: csi.spiffe.io
+spec:
+  attachRequired: false
+  podInfoOnMount: true
+  volumeLifecycleModes:
+    - Ephemeral
