@@ -1,0 +1,67 @@
+# ArgoCD Application for spiffe-csi-driver.
+#
+# Unlike our other Applications, this one does NOT point at a path inside
+# this repo. It points directly at the upstream Helm chart published by the
+# SPIFFE project. Our Git-side configuration lives inline in helm.values
+# below — that keeps the chart un-vendored (we get bug fixes for free when
+# we bump targetRevision) while still keeping our customizations in Git.
+#
+# What this installs:
+#   A DaemonSet (one pod per node) that exposes the SPIRE agent socket as
+#   a Kubernetes CSI volume. Pods that want SVIDs declare a CSI volume of
+#   driver "csi.spiffe.io" instead of using hostPath. More secure (the CSI
+#   driver mediates access), and it's what Istio's auto-injected sidecars
+#   expect by default.
+#
+# Why we need it BEFORE Istio:
+#   Istio's sidecar templates (when configured for SPIRE) mount the agent
+#   socket via CSI. If Istio is installed first and a sidecar gets injected
+#   without the driver present, the pod will be stuck in ContainerCreating
+#   forever because the CSI volume cannot be attached.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spiffe-csi-driver
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # Upstream SPIFFE Helm chart repository.
+    repoURL: https://spiffe.github.io/helm-charts-hardened/
+    chart: spiffe-csi-driver
+    # Pinned to a known-good version. Bump deliberately; do not float.
+    targetRevision: 0.2.7
+    helm:
+      # Inline values override the chart defaults to match our env:
+      values: |
+        # MUST match the socket path used by the SPIRE Agent DaemonSet
+        # (set in infrastructure/spire-agent/). Our agent writes to
+        # /run/spire/agent-sockets/spire-agent.sock on every node.
+        agentSocketPath: /run/spire/agent-sockets/spire-agent.sock
+
+        # The CSI plugin's logical name. Pods will reference this string
+        # in volumes[].csi.driver. Keep as default unless you have a
+        # second CSI driver to disambiguate.
+        pluginName: csi.spiffe.io
+
+        # Run as DaemonSet — one pod per node. The pod owns the per-node
+        # CSI socket and brokers SVID requests from workloads.
+        # nodeSelector/tolerations left as upstream defaults so it runs
+        # on all 3 of our kind nodes (control-plane + 2 workers).
+
+  destination:
+    server: https://kubernetes.default.svc
+    # Live alongside SPIRE itself. Keeps "things that mediate workload
+    # identity" in one namespace, easier to RBAC and audit.
+    namespace: spire-server
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true   # CSIDriver CRD is large; SSA avoids 256K patch limit
