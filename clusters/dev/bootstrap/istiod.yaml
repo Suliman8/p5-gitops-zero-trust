@@ -1,0 +1,77 @@
+# ArgoCD Application — Istio "istiod" chart (the control plane).
+#
+# What this deploys:
+#   - istiod Deployment in istio-system namespace.
+#   - Validation/mutation webhooks (the latter is what auto-injects
+#     sidecars into pods in labeled namespaces).
+#   - A Service "istiod" on port 15010/15012/15014 used by Envoy proxies
+#     to fetch their config (xDS).
+#
+# What this does NOT do yet:
+#   - It does NOT inject sidecars anywhere. That requires labeling a
+#     namespace with `istio-injection=enabled` (Phase C).
+#   - It does NOT use SPIRE as its CA. The default Citadel CA is in use
+#     until Phase B swaps it.
+#
+# DEPENDS ON: istio-base must be Synced/Healthy BEFORE this Application
+# starts to sync, otherwise the chart fails referencing missing CRDs.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istiod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    chart: istiod
+    targetRevision: 1.24.1
+    helm:
+      values: |
+        global:
+          istioNamespace: istio-system
+          # Pin the proxy image version to match. Without this, sidecars
+          # would be injected with whatever the chart default points to
+          # which can drift from the control-plane version.
+          tag: 1.24.1
+          # Resource requests modest enough for a kind dev cluster.
+          # Production would set 4× these or more.
+        pilot:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+        # Single-revision install. Same reason as in istio-base.
+        revision: ""
+        # ----- mesh-wide config that we WILL revisit in Phase B ----------
+        meshConfig:
+          # Wait to start the app container until Envoy is ready. Avoids
+          # the classic "app starts up, sends requests, no sidecar yet,
+          # request times out" race during pod startup.
+          defaultConfig:
+            holdApplicationUntilProxyStarts: true
+          # Permit traffic to external (out-of-mesh) services. Default is
+          # ALLOW_ANY; setting it explicitly so the choice is documented.
+          outboundTrafficPolicy:
+            mode: ALLOW_ANY
+        # Default Citadel CA is in use; Phase B will swap this out.
+        # No SPIRE wiring here yet to keep this install boring & easy
+        # to debug.
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

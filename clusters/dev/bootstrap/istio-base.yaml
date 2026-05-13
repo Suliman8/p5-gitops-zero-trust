@@ -1,0 +1,61 @@
+# ArgoCD Application — Istio "base" chart.
+#
+# Two-step install pattern (split into istio-base + istiod) is the official
+# Istio Helm install path. Why split:
+#   1. The "base" chart installs CRDs (Gateway, VirtualService, DR,
+#      AuthorizationPolicy, etc.) and a small amount of RBAC. NO running
+#      pods. If you uninstall base, you tear down the whole mesh.
+#   2. The "istiod" chart installs the actual control plane Deployment.
+#      It REFERENCES the CRDs that base provides. If you install istiod
+#      first, the chart fails because the CRDs it references don't exist.
+#
+# So: base MUST be installed and synced BEFORE istiod. ArgoCD doesn't
+# enforce cross-Application ordering by itself — we'll apply this one
+# first manually, wait for Synced/Healthy, then apply istiod.yaml.
+#
+# Chart pinning: 1.24.1 matches the istioctl binary we installed locally.
+# Mismatched control-plane + istioctl versions usually work but produce
+# warnings; matching them is the safe default.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-base
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    chart: base
+    targetRevision: 1.24.1
+    helm:
+      # The chart's defaults are sensible for our use case. Only override
+      # what we need to:
+      values: |
+        # Standard Istio control-plane namespace name. Don't change unless
+        # you have a strong reason; many other tools (kiali, observability)
+        # assume "istio-system".
+        global:
+          istioNamespace: istio-system
+        # Default revision tag. Single-revision installs use "default";
+        # multi-revision upgrades use named revisions like "1-24-1".
+        # We're single-revision so "default" is correct.
+        defaultRevision: default
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # Some Istio CRDs (especially the validation webhook configs) are
+      # >256 KB which exceeds the default kubectl apply patch limit.
+      # ServerSideApply uses the K8s API's server-side apply mechanism,
+      # which doesn't have that limit.
+      - ServerSideApply=true
