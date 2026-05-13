@@ -68,6 +68,22 @@ spec:
     server: https://kubernetes.default.svc
     namespace: istio-system
 
+  # Istio writes a self-signed CA bundle into its own ValidatingWebhook at
+  # runtime (chicken-and-egg bootstrap of the webhook's TLS). ArgoCD sees
+  # the cluster state with a populated caBundle and the chart template
+  # with empty caBundle, declares drift, and fights it forever.
+  # Tell ArgoCD to ignore that one field on these two resources.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: istio-validator-istio-system
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
+
   syncPolicy:
     automated:
       prune: true
