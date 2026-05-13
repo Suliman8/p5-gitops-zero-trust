@@ -1,0 +1,45 @@
+# ClusterSPIFFEID for Istio-managed workloads (sidecar mode).
+#
+# Issues SPIFFE IDs in the Istio-canonical format:
+#   spiffe://<trustDomain>/ns/<namespace>/sa/<serviceAccount>
+#
+# Why this format (and not the simpler "spiffe://p5.local/demo-app" we
+# used in W5):
+#   Istio's AuthorizationPolicy resources reference principals by exactly
+#   this string. Example policy:
+#     from:
+#       - source:
+#           principals: ["spiffe://p5.local/ns/demo/sa/default"]
+#   If our SPIFFE IDs don't match this convention, every AuthorizationPolicy
+#   becomes pages of custom regex. Matching the convention keeps policies
+#   readable and lets us use Istio's standard tooling (istioctl analyze,
+#   kiali, etc.) without translation layers.
+#
+# Selector scope:
+#   namespaceSelector matches `istio-injection=enabled` — meaning ONLY
+#   namespaces that are explicitly opted into the mesh get these IDs.
+#   The demo and demo-server namespaces will be labeled in Phase C; until
+#   then this CRD exists but matches nothing. That keeps W5's mTLS
+#   working while we set up the mesh in parallel.
+#
+# The existing demo-app.yaml and demo-server.yaml entries keep issuing
+# the W5-style "spiffe://p5.local/demo-app" / "...demo-server" identities
+# UNTIL Phase C, when we delete them (the sidecars then take over the
+# identity work and the apps don't talk to the Workload API directly).
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: istio-workloads
+spec:
+  # Templated SPIFFE ID — one entry per pod, identity derived from pod
+  # metadata. The controller-manager renders these placeholders at
+  # entry-creation time:
+  #   .TrustDomain                  → p5.local
+  #   .PodMeta.Namespace            → e.g. "demo"
+  #   .PodSpec.ServiceAccountName   → e.g. "default"
+  spiffeIDTemplate: "spiffe://{{ .TrustDomain }}/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+
+  # Only match pods in namespaces explicitly opted into the mesh.
+  namespaceSelector:
+    matchLabels:
+      istio-injection: enabled

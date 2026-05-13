@@ -49,20 +49,58 @@ spec:
               memory: 1Gi
         # Single-revision install. Same reason as in istio-base.
         revision: ""
-        # ----- mesh-wide config that we WILL revisit in Phase B ----------
+        # ----- mesh-wide config (Phase B: SPIRE integration) -------------
         meshConfig:
-          # Wait to start the app container until Envoy is ready. Avoids
-          # the classic "app starts up, sends requests, no sidecar yet,
-          # request times out" race during pod startup.
+          # CRITICAL: must match SPIRE's trust domain. With these aligned,
+          # SVIDs issued by SPIRE (spiffe://p5.local/...) are recognised by
+          # Istio as in-mesh identities. Mismatch → Istio rejects all SVIDs
+          # as foreign and mTLS fails between every pair of sidecars.
+          trustDomain: p5.local
+
+          # Default proxy settings applied to every injected sidecar.
           defaultConfig:
+            # Wait to start the app container until Envoy is ready. Avoids
+            # the classic "app starts up, sends requests, no sidecar yet,
+            # request times out" race during pod startup.
             holdApplicationUntilProxyStarts: true
+            # Tell Envoy SDS (Secret Discovery Service) to read certs from
+            # the SPIRE Workload API socket instead of from Citadel-issued
+            # secrets. The path inside the sidecar comes from the volume
+            # mount below in the injection template.
+            proxyMetadata:
+              SPIFFE_ENDPOINT_SOCKET: unix:///run/secrets/workload-spiffe-uds/spire-agent.sock
+
           # Permit traffic to external (out-of-mesh) services. Default is
           # ALLOW_ANY; setting it explicitly so the choice is documented.
           outboundTrafficPolicy:
             mode: ALLOW_ANY
-        # Default Citadel CA is in use; Phase B will swap this out.
-        # No SPIRE wiring here yet to keep this install boring & easy
-        # to debug.
+
+        # ----- Custom sidecar injection template "spire" -----------------
+        # Pods that want SPIRE-issued certs (instead of Citadel-issued)
+        # opt in by adding the annotation:
+        #   inject.istio.io/templates: "sidecar,spire"
+        # That applies BOTH the default "sidecar" template (the standard
+        # istio-proxy container) AND this "spire" patch (the CSI volume
+        # that exposes the agent socket to Envoy).
+        #
+        # We keep this as an OPT-IN template (not the default) so we can
+        # test mesh injection in stages: first plain Citadel for sanity,
+        # then SPIRE for the apps that need it.
+        sidecarInjectorWebhook:
+          templates:
+            spire: |
+              spec:
+                containers:
+                  - name: istio-proxy
+                    volumeMounts:
+                      - name: workload-socket
+                        mountPath: /run/secrets/workload-spiffe-uds
+                        readOnly: true
+                volumes:
+                  - name: workload-socket
+                    csi:
+                      driver: csi.spiffe.io
+                      readOnly: true
 
   destination:
     server: https://kubernetes.default.svc

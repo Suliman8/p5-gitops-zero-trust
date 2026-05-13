@@ -11,3 +11,4 @@ resources:
   - node-alias.yaml
   - demo-app.yaml
   - demo-server.yaml
+  - istio-workloads.yaml   # Week 6 — Istio-format IDs for mesh workloads
