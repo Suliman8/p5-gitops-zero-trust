@@ -1,16 +1,20 @@
-# ClusterIP service — internal-only DNS name for the server.
+# demo-server Service.
 #
-# Why ClusterIP and not LoadBalancer/NodePort:
-#   Zero-trust means we don't expose this beyond the cluster. The whole
-#   POINT is that callers must be authenticated SPIRE workloads. Putting
-#   a LoadBalancer in front would expose :8443 to anyone who can reach
-#   the node IP — they would fail the mTLS handshake, but giving them
-#   the chance to even try is unnecessary.
+# Week 6 changes:
+#   - port: 8443 → 80 (plain HTTP — sidecar wraps in mTLS transparently)
+#   - port NAME: "https" → "http" — IMPORTANT.
 #
-# DNS name that demo-client will dial:
-#   demo-server.demo-server.svc.cluster.local:8443
-#   ^^^^^^^^^^^ ^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^
-#   service     namespace   cluster suffix
+# Why the port NAME matters in Istio:
+#   Istio uses the port name PREFIX to detect application protocol.
+#   "http"   → L7 routing/AuthorizationPolicy by HTTP method/path
+#   "http2"  → L7 over h2
+#   "tcp"    → L4 only, no L7 features
+#   "https"  → assumes the app does its own TLS, sidecar passes through
+#              (this is what we'd want in W5; NOT what we want now)
+#   Misnaming → Istio falls back to L4 mode, AuthorizationPolicies that
+#   match by HTTP method or principal won't work, and you wonder why
+#   for an hour. Naming this "http" is the difference between "policy
+#   works" and "policy looks correct but is silently bypassed."
 apiVersion: v1
 kind: Service
 metadata:
@@ -21,7 +25,7 @@ spec:
   selector:
     app: demo-server
   ports:
-    - name: https
-      port: 8443
-      targetPort: 8443
+    - name: http
+      port: 80
+      targetPort: 8080
       protocol: TCP

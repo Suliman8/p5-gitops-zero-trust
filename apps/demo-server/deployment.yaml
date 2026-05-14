@@ -1,33 +1,19 @@
-# demo-server Deployment.
+# demo-server (Week 6) — plain HTTP server inside a service mesh.
 #
-# The interesting parts here are NOT the Go binary (any HTTP server would
-# look like this) — they are:
-#   1. The hostPath mount for the SPIRE agent socket.
-#   2. The securityContext lockdown.
+# What changed vs Week 5:
+#   - image bumped to v0.2.0 (Go code uses only net/http now; no go-spiffe)
+#   - containerPort + service port: 8443 → 8080 (plain HTTP)
+#   - REMOVED: spire-agent-socket hostPath volume + mount
+#       The hand-coded SPIFFE Workload API code is gone, so the app
+#       doesn't need the socket anymore. The Istio sidecar still needs
+#       it — but that comes from a CSI volume added by the "spire"
+#       injection template (see annotation below).
+#   - ADDED: pod annotation inject.istio.io/templates=sidecar,spire
+#       This opts the injected sidecar into mounting the SPIRE socket
+#       via the CSI driver. Without this, the sidecar would use the
+#       default template (which expects Citadel-issued certs).
 #
-# (1) Why hostPath:
-#   The SPIRE agent runs as a DaemonSet on every node and exposes its
-#   Workload API as a Unix socket at /run/spire/agent-sockets on the
-#   node host. Two different pods on the same node share a Unix socket
-#   ONLY by mounting the same hostPath. There is no other K8s primitive
-#   for this — emptyDir is per-pod, configMap is for files, CSI exists
-#   but adds a moving part we don't need yet.
-#
-#   It's SAFE here because:
-#     - readOnly: true → workload cannot tamper with the socket dir
-#     - the agent itself is what decides who-gets-what-SVID, based on
-#       the pod's UID (which the workload cannot forge)
-#
-# (2) Why the strict securityContext:
-#   The pod holds a private key (the SVID). Any privilege the container
-#   has, an attacker would inherit if they pop RCE. So we:
-#     - runAsNonRoot      → no UID 0 inside container
-#     - readOnlyRootFs    → attacker cannot drop a binary on disk
-#     - drop ALL caps     → no CAP_NET_RAW (no raw sockets), no nothing
-#     - no privilege esc  → setuid binaries cannot elevate
-#     - seccomp Runtime   → kernel-level syscall filter (the K8s default
-#                           seccomp profile, which blocks ~50 dangerous
-#                           syscalls)
+# Security posture unchanged: non-root, ro rootfs, dropped caps, seccomp.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -44,25 +30,27 @@ spec:
     metadata:
       labels:
         app: demo-server
+      annotations:
+        # Tell the Istio sidecar injector to apply BOTH the default
+        # "sidecar" template AND our custom "spire" patch from
+        # istiod's sidecarInjectorWebhook.templates.spire. The patch
+        # adds the CSI volume that exposes the SPIRE agent socket.
+        inject.istio.io/templates: "sidecar,spire"
     spec:
-      # Pod-level securityContext — defaults for every container.
       securityContext:
         runAsNonRoot: true
-        runAsUser: 65532          # nonroot UID in distroless images
+        runAsUser: 65532
         runAsGroup: 65532
         fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: demo-server
-          image: demo-server:v0.1.0
-          # IfNotPresent → kubelet uses the local image (which we
-          # sideloaded with `kind load`) and does NOT try to pull from
-          # a registry that doesn't exist.
+          image: demo-server:v0.2.0
           imagePullPolicy: IfNotPresent
           ports:
-            - name: https
-              containerPort: 8443
+            - name: http
+              containerPort: 8080
               protocol: TCP
           securityContext:
             allowPrivilegeEscalation: false
@@ -76,16 +64,3 @@ spec:
             limits:
               cpu: "200m"
               memory: "128Mi"
-          volumeMounts:
-            # Mount the agent socket dir read-only. The Go code dials
-            # unix:///run/spire/agent-sockets/spire-agent.sock — that
-            # path inside the container resolves to the file the agent
-            # owns on the host.
-            - name: spire-agent-socket
-              mountPath: /run/spire/agent-sockets
-              readOnly: true
-      volumes:
-        - name: spire-agent-socket
-          hostPath:
-            path: /run/spire/agent-sockets
-            type: Directory

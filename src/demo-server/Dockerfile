@@ -19,8 +19,10 @@ WORKDIR /src
 # of the source. This is a Docker layer-caching trick: if only main.go changes
 # but dependencies don't, the `go mod download` layer is reused from cache.
 # Without this, every code change re-downloads all deps. Big speed-up.
-COPY go.mod go.sum ./
-RUN go mod download
+# Week 6: go.sum gone — we have zero non-stdlib deps after stripping
+# go-spiffe (the sidecar handles mTLS now). go.mod is still copied so
+# the module path is set up correctly for `go build`.
+COPY go.mod ./
 
 COPY main.go ./
 

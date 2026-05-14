@@ -8,8 +8,10 @@ FROM golang:1.22.11-alpine AS builder
 
 WORKDIR /src
 
-COPY go.mod go.sum ./
-RUN go mod download
+# Week 6: go.sum gone — we have zero non-stdlib deps after stripping
+# go-spiffe (the sidecar handles mTLS now). go.mod is still copied so
+# the module path is set up correctly for `go build`.
+COPY go.mod ./
 
 COPY main.go ./
 

@@ -9,6 +9,9 @@ kind: Kustomization
 # create` invocations that vanish on cluster recreation.
 resources:
   - node-alias.yaml
-  - demo-app.yaml
-  - demo-server.yaml
-  - istio-workloads.yaml   # Week 6 — Istio-format IDs for mesh workloads
+  # Week 6: demo-app.yaml and demo-server.yaml removed. Their simple
+  # "spiffe://p5.local/demo-app" / "...demo-server" identities were
+  # consumed by hand-coded mTLS in the Go apps. Now the apps are plain
+  # HTTP and the istio-proxy sidecar handles identity — fetching
+  # Istio-format SVIDs issued by istio-workloads.yaml below.
+  - istio-workloads.yaml

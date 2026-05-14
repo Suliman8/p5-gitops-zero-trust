@@ -1,15 +1,15 @@
-# Separate namespace from demo-app on purpose:
-#   - Blast-radius isolation. If RBAC ever leaks, a compromise on the
-#     client side cannot list/exec into server pods (different ns).
-#   - Lets us point a ClusterSPIFFEID at THIS namespace by label, so the
-#     server identity is automatically scoped to pods that live here.
+# demo-server namespace, NOW labeled for Istio sidecar injection.
 #
-# The `kubernetes.io/metadata.name` label is auto-applied by Kubernetes
-# to every namespace — it's the canonical handle for namespaceSelector
-# rules without having to add our own labels.
+# Two labels matter:
+#   kubernetes.io/metadata.name → still selected by W5 ClusterSPIFFEIDs
+#                                 (legacy mode, will get pruned in W7)
+#   istio-injection=enabled     → tells the Istio mutating webhook to
+#                                 add an istio-proxy sidecar to every
+#                                 pod created in this namespace.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: demo-server
   labels:
     kubernetes.io/metadata.name: demo-server
+    istio-injection: enabled

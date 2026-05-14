@@ -1,6 +1,10 @@
-# The namespace this app lives in. We declare it in Git so ArgoCD creates it
-# automatically on first sync — no manual `kubectl create ns` needed.
+# demo namespace, NOW labeled for Istio sidecar injection.
+# Pods created here get an istio-proxy sidecar injected automatically
+# by the Istio mutating webhook.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: demo
+  labels:
+    kubernetes.io/metadata.name: demo
+    istio-injection: enabled
