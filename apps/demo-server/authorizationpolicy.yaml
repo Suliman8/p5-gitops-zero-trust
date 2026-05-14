@@ -43,8 +43,11 @@ spec:
     - from:
         - source:
             principals:
-              # The full SPIFFE ID of demo-app's pods. Format:
-              #   spiffe://<trust-domain>/ns/<namespace>/sa/<serviceaccount>
-              # Citadel (and SPIRE, when we re-enable it) auto-issues
-              # SVIDs with exactly this format for every meshed pod.
-              - "spiffe://p5.local/ns/demo/sa/default"
+              # NOTE: do NOT include the "spiffe://" prefix here.
+              # Istio's policy translator prepends "spiffe://" to every
+              # principal string before pushing it to Envoy. Writing
+              # "spiffe://p5.local/..." here produces an Envoy matcher
+              # for "spiffe://spiffe://p5.local/..." which never matches
+              # anything → silent 403 for all callers. Spent ~30 minutes
+              # debugging this; format is documented poorly in places.
+              - "p5.local/ns/demo/sa/default"
