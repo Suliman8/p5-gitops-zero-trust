@@ -50,7 +50,4 @@ spec:
               # for "spiffe://spiffe://p5.local/..." which never matches
               # anything → silent 403 for all callers. Spent ~30 minutes
               # debugging this; format is documented poorly in places.
-              # DEMO: changed from demo-app's identity to a non-existent
-              # workload. Effect: nobody is whitelisted → demo-app gets
-              # 403 RBAC denied. Restore by reverting this commit.
-              - "p5.local/ns/some-other-team/sa/finance-batch"
+              - "p5.local/ns/demo/sa/default"
