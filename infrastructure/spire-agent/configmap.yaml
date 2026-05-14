@@ -26,7 +26,14 @@ data:
 
         # Where workloads will look for the Workload API socket.
         # Must match the hostPath mount in daemonset.yaml.
-        socket_path = "/run/spire/agent-sockets/spire-agent.sock"
+        #
+        # Week 6: renamed from "spire-agent.sock" → "socket" because
+        # Istio's istio-agent (inside istio-proxy sidecars) hardcodes
+        # the SDS socket filename to "socket" and tries to bind to it.
+        # Even with SPIFFE_ENDPOINT_SOCKET pointing elsewhere, the
+        # collision on the readOnly CSI mount path caused the sidecar
+        # to crash-loop. Matching Istio's expected name avoids the fight.
+        socket_path = "/run/spire/agent-sockets/socket"
 
         # Trust domain MUST be identical to the Server's. Mismatch = no SVIDs issued.
         trust_domain = "p5.local"

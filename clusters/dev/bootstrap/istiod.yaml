@@ -68,7 +68,9 @@ spec:
             # secrets. The path inside the sidecar comes from the volume
             # mount below in the injection template.
             proxyMetadata:
-              SPIFFE_ENDPOINT_SOCKET: unix:///run/secrets/workload-spiffe-uds/spire-agent.sock
+              # File name "socket" matches Istio's hardcoded SDS path
+              # (see infrastructure/spire-agent/configmap.yaml for context).
+              SPIFFE_ENDPOINT_SOCKET: unix:///run/secrets/workload-spiffe-uds/socket
 
           # Permit traffic to external (out-of-mesh) services. Default is
           # ALLOW_ANY; setting it explicitly so the choice is documented.
