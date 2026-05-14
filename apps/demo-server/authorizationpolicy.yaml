@@ -1,0 +1,50 @@
+# Istio AuthorizationPolicy — the mesh-layer access control rule for demo-server.
+#
+# What this declares:
+#   "Only callers whose verified SPIFFE ID is
+#    spiffe://p5.local/ns/demo/sa/default may call demo-server."
+#
+# How enforcement works:
+#   - When ANY allow-policy matches a workload, Istio switches that
+#     workload from default-allow to default-deny: only traffic that
+#     also matches an allow-rule is permitted.
+#   - This single policy is therefore both a whitelist AND a default-deny.
+#     Any other workload (or someone outside the mesh) trying to call
+#     demo-server gets `RBAC: access denied` at the sidecar — the request
+#     never reaches the demo-server container.
+#
+# Where the check happens:
+#   At demo-server's istio-proxy sidecar. The sidecar terminated the mTLS
+#   handshake, knows the verified peer SPIFFE ID from the client cert,
+#   and applies this policy BEFORE forwarding the request to the app.
+#
+# Why principals (not source.namespaces):
+#   Namespaces are mutable labels. Principals are cryptographically
+#   anchored — they come from the SPIFFE ID baked into the client's SVID,
+#   which only istiod's CA can issue. A pod can't spoof a SPIFFE ID by
+#   claiming to be in a different namespace; the cert won't match.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: demo-server-allow-demo-app
+  namespace: demo-server
+spec:
+  # Match every pod with label app=demo-server in this namespace.
+  # If omitted, the policy applies to ALL workloads in the namespace —
+  # we keep it scoped tight for clarity.
+  selector:
+    matchLabels:
+      app: demo-server
+
+  # `action: ALLOW` (the default) means: "permit traffic matching `rules`,
+  # deny everything else that this policy applies to."
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              # The full SPIFFE ID of demo-app's pods. Format:
+              #   spiffe://<trust-domain>/ns/<namespace>/sa/<serviceaccount>
+              # Citadel (and SPIRE, when we re-enable it) auto-issues
+              # SVIDs with exactly this format for every meshed pod.
+              - "spiffe://p5.local/ns/demo/sa/default"
