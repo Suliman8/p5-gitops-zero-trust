@@ -1,0 +1,112 @@
+# ArgoCD Application for HashiCorp Vault.
+#
+# Pulled directly from HashiCorp's official Helm repo
+# (helm.releases.hashicorp.com). Inline values configure a minimal
+# learning-grade install:
+#   - standalone (one pod, not HA)
+#   - file storage backend on a PVC (persistent across pod restarts)
+#   - no TLS to clients inside the cluster (the mesh will do mTLS for
+#     us later if we add Vault's namespace to istio-injection=enabled)
+#   - injector disabled (we will NOT use the Vault Agent injector
+#     pattern — too much sidecar magic. Our demo-server will fetch
+#     secrets directly using the Vault HTTP API.)
+#
+# After this Application syncs:
+#   - kubectl get pods -n vault → vault-0 0/1 Running (Sealed)
+#   - Vault is RUNNING but cannot serve any data until you unseal it.
+#   - You (the user) must then run `vault operator init` and
+#     `vault operator unseal` to bring it online. See the Week 7 plan.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://helm.releases.hashicorp.com
+    chart: vault
+    # Pinned. Latest as of early 2026; bump deliberately.
+    targetRevision: 0.30.0
+    helm:
+      values: |
+        global:
+          # Disable TLS for in-cluster traffic. The mesh will provide
+          # mTLS if we add the vault ns to istio-injection later. For
+          # now Vault listens on plain HTTP at :8200 inside the cluster.
+          tlsDisable: true
+
+        # Vault Agent Injector — disabled. The injector auto-injects
+        # sidecars that fetch secrets and write them to a shared volume.
+        # Powerful but very magical; for learning we'd rather have the
+        # demo-server make explicit HTTP calls to Vault so the auth
+        # flow is visible in code.
+        injector:
+          enabled: false
+
+        server:
+          # Standalone = 1 pod, no Raft consensus, no leader election.
+          # HA would be 3 pods + integrated storage. Overkill for dev.
+          standalone:
+            enabled: true
+            config: |
+              ui = true
+
+              # API listener — no TLS. Inside the cluster only; not
+              # exposed via Service of type LoadBalancer.
+              listener "tcp" {
+                tls_disable = true
+                address     = "[::]:8200"
+                cluster_address = "[::]:8201"
+              }
+
+              # File storage. Data is kept on the PVC mounted at /vault/data.
+              # Survives pod restarts; lost if PVC is deleted.
+              storage "file" {
+                path = "/vault/data"
+              }
+
+              # No telemetry / no audit log persistence in dev. We can
+              # add audit devices later via the API.
+
+          # PVC for the file storage backend. 1Gi is plenty for a demo.
+          dataStorage:
+            enabled: true
+            size: 1Gi
+            mountPath: /vault/data
+            # local-path is the kind default StorageClass; works without
+            # any extra setup.
+            storageClass: standard
+
+          # No high-availability mode.
+          ha:
+            enabled: false
+
+          # Resource requests modest enough for a kind dev cluster.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+        # Web UI. Reachable via port-forward; not exposed externally.
+        ui:
+          enabled: true
+          serviceType: ClusterIP
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
