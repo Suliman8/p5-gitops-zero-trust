@@ -30,12 +30,14 @@ spec:
     metadata:
       labels:
         app: demo-server
-      annotations:
-        # Tell the Istio sidecar injector to apply BOTH the default
-        # "sidecar" template AND our custom "spire" patch from
-        # istiod's sidecarInjectorWebhook.templates.spire. The patch
-        # adds the CSI volume that exposes the SPIRE agent socket.
-        inject.istio.io/templates: "sidecar,spire"
+      # Week 6 note: we INTENDED to opt into the SPIRE sidecar template
+      # (inject.istio.io/templates: "sidecar,spire") so SVIDs come from
+       # SPIRE. That failed because of a SPIRE+kind+cgroup-v2 attestor
+      # bug we couldn't fix in-session. Using the DEFAULT template means
+      # sidecars get certs from Istio's built-in Citadel CA. The trust
+      # domain stays p5.local so SPIFFE IDs look the same in policies;
+      # the only difference is who signs (Citadel vs SPIRE). Revisit in
+      # a later week with SPIRE 1.15+ or a non-kind cluster.
     spec:
       securityContext:
         runAsNonRoot: true

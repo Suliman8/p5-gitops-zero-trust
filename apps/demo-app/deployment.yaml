@@ -24,8 +24,9 @@ spec:
     metadata:
       labels:
         app: demo-app
-      annotations:
-        inject.istio.io/templates: "sidecar,spire"
+      # Week 6 note: SPIRE-as-CA integration deferred (see demo-server
+      # deployment.yaml for explanation). Using default sidecar template
+      # so sidecars get Citadel-issued certs.
     spec:
       securityContext:
         runAsNonRoot: true
