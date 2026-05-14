@@ -1,0 +1,57 @@
+# SPIRE OIDC Discovery Provider config.
+#
+# What this component is:
+#   A tiny HTTP server that serves the STANDARD OIDC discovery endpoints
+#   Vault expects:
+#     GET /.well-known/openid-configuration   (metadata, points at jwks_uri)
+#     GET /keys                               (the JWKS = the public keys
+#                                              Vault uses to verify JWT-SVID
+#                                              signatures)
+#
+#   It exists so SPIRE-issued JWT-SVIDs can be verified by ANY system that
+#   speaks standard OIDC — Vault, GitHub Actions, AWS STS, Kafka, etc. —
+#   without those systems having to learn the SPIFFE-specific bundle API.
+#
+# How it gets the keys:
+#   server_api mode — talks to the SPIRE Server's local admin Unix socket,
+#   which we already share between containers via an emptyDir volume
+#   (originally added in W4 for the controller-manager sidecar).
+#
+# Why HTTP, not HTTPS:
+#   Vault and the provider live in the same cluster. Mesh-managed mTLS
+#   will protect the link once we add the spire-server ns to the mesh.
+#   For now plain HTTP keeps the wiring simple.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-oidc-discovery-provider
+  namespace: spire-server
+data:
+  oidc-discovery-provider.conf: |
+    # Logged-debug while we are learning. Switch to INFO later.
+    log_level = "debug"
+
+    # Acceptable Host headers. Vault calls us by the Service's DNS name
+    # below — must match.
+    domains = [
+      "spire-oidc.spire-server.svc.cluster.local",
+      "spire-oidc",
+      "localhost"
+    ]
+
+    # Listen on plain HTTP. The provider also supports `serving_cert_file`
+    # for HTTPS, but that needs a cert we haven't issued yet.
+    # Port 8090 because spire-server already uses 8080 for health checks
+    # (same pod = port collision avoidance).
+    insecure_addr = ":8090"
+
+    # Required when serving HTTP and the issuer URL is also http://.
+    # Without this, the provider rejects requests claiming the JWKS issuer
+    # is "insecure" (no TLS).
+    allow_insecure_scheme = true
+
+    # Talk to SPIRE Server via its local admin socket. The socket is the
+    # same emptyDir volume mounted into spire-controller-manager already.
+    server_api {
+      address = "unix:///tmp/spire-server/private/api.sock"
+    }

@@ -127,6 +127,43 @@ spec:
             limits:
               cpu: "200m"
               memory: "128Mi"
+
+        # ---------------------------------------------------------------
+        # spire-oidc-discovery-provider — sidecar that exposes SPIRE's
+        # JWT signing keys via the standard OIDC discovery endpoints
+        # (/.well-known/openid-configuration and /keys). Vault uses these
+        # to verify JWT-SVID signatures without speaking SPIFFE-native.
+        #
+        # Talks to the SPIRE Server via the same admin Unix socket that
+        # the controller-manager uses (shared via the existing
+        # spire-server-socket emptyDir).
+        # ---------------------------------------------------------------
+        - name: spire-oidc-discovery-provider
+          image: ghcr.io/spiffe/oidc-discovery-provider:1.14.6
+          imagePullPolicy: IfNotPresent
+          args:
+            - -config
+            - /run/oidc-provider/config/oidc-discovery-provider.conf
+          ports:
+            - name: oidc-http
+              containerPort: 8090
+              protocol: TCP
+          volumeMounts:
+            # Same emptyDir as controller-manager — gives us access to
+            # SPIRE Server's admin socket at .../private/api.sock.
+            - name: spire-server-socket
+              mountPath: /tmp/spire-server/private
+              readOnly: true
+            - name: oidc-provider-config
+              mountPath: /run/oidc-provider/config
+              readOnly: true
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
       volumes:
         - name: spire-config
           configMap:
@@ -134,6 +171,9 @@ spec:
         - name: controller-manager-config
           configMap:
             name: spire-controller-manager-config
+        - name: oidc-provider-config
+          configMap:
+            name: spire-oidc-discovery-provider
         # The socket bridge between SPIRE Server and Controller Manager.
         # emptyDir is the right primitive: ephemeral, pod-scoped, both
         # containers can rw — exactly what a Unix socket needs.

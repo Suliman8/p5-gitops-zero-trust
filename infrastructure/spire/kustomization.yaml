@@ -10,3 +10,6 @@ resources:
   - configmap.yaml
   - statefulset.yaml
   - service.yaml
+  # Week 7 — OIDC discovery provider for Vault to verify JWT-SVIDs
+  - oidc-provider-configmap.yaml
+  - oidc-provider-service.yaml

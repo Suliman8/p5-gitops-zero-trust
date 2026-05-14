@@ -1,0 +1,33 @@
+# Service that exposes the SPIRE OIDC discovery provider sidecar
+# to other pods in the cluster (notably Vault).
+#
+# Why a separate Service (not just adding a port to spire-server's Service):
+#   - Cleanliness: spire-server's Service is for gRPC :8081 (agents
+#     calling the Server). Mixing in HTTP on a different port is
+#     confusing and makes RBAC/policy rules harder to read.
+#   - Different consumers: agents call gRPC; Vault calls REST. Better
+#     to keep the listeners separately labelled.
+#
+# DNS name pods will resolve:
+#   spire-oidc.spire-server.svc.cluster.local
+#
+# Used by:
+#   - Vault's `auth/jwt` config (oidc_discovery_url)
+apiVersion: v1
+kind: Service
+metadata:
+  name: spire-oidc
+  namespace: spire-server
+spec:
+  type: ClusterIP
+  selector:
+    # Same selector as spire-server's Service — both target the same pod,
+    # but expose different containers' ports.
+    app: spire-server
+  ports:
+    - name: http
+      # External port stays 8080 (the standard); container listens on 8090
+      # because spire-server health checks already occupy 8080 in the pod.
+      port: 8080
+      targetPort: 8090
+      protocol: TCP
