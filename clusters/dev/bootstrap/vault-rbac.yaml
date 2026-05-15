@@ -1,0 +1,35 @@
+# ArgoCD Application for our custom Vault RBAC.
+#
+# Why a separate Application from the Helm-chart Vault one:
+#   The Helm chart manages Vault's own resources. We don't want our
+#   custom ClusterRoleBinding mixed into its Application — when we
+#   bump the Helm chart version, we don't want ArgoCD churning the
+#   RBAC too. Separating concerns into their own Applications keeps
+#   each sync small.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-rbac
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/Suliman8/p5-gitops-zero-trust.git
+    path: infrastructure/vault
+    targetRevision: main
+
+  destination:
+    server: https://kubernetes.default.svc
+    # ClusterRoleBinding is cluster-scoped; namespace here is just where
+    # ArgoCD tracks the Application's resources for housekeeping.
+    namespace: vault
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

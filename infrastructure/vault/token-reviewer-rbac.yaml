@@ -1,0 +1,41 @@
+# RBAC for Vault to validate Kubernetes ServiceAccount tokens.
+#
+# What this is:
+#   Vault's `auth/kubernetes` method needs to call the Kubernetes
+#   TokenReview API to verify that a SA token presented by a workload
+#   is real and current. That call is gated by RBAC — the caller must
+#   have `system:auth-delegator`.
+#
+# What we're doing:
+#   Binding the existing `vault` ServiceAccount (created by the Helm
+#   chart, lives in the `vault` namespace) to the built-in
+#   `system:auth-delegator` ClusterRole. This grants exactly the
+#   permissions needed for TokenReview and SubjectAccessReview, nothing
+#   more.
+#
+# Why this is the W7 *fallback* path:
+#   We originally wanted Vault to verify SPIFFE JWT-SVIDs against
+#   SPIRE's OIDC endpoint (no K8s API involvement). That fell over on
+#   the SPIRE workload attestor's k8s plugin. K8s auth bypasses SPIRE
+#   entirely — demo-server presents its native K8s SA token, Vault
+#   asks the K8s API "is this real?", and it works on every cluster
+#   without any cgroup gymnastics.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-token-reviewer
+  labels:
+    app.kubernetes.io/name: vault
+    app.kubernetes.io/component: token-reviewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  # Built-in K8s ClusterRole that grants exactly TokenReview +
+  # SubjectAccessReview. Standard for delegated auth servers.
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    # The Helm chart creates this SA. If we ever uninstall+reinstall
+    # Vault and the SA name changes, update this.
+    name: vault
+    namespace: vault

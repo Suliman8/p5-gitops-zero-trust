@@ -1,0 +1,10 @@
+# Extra GitOps-managed bits for Vault that are NOT part of the upstream
+# Helm chart. Currently:
+#   - token-reviewer-rbac.yaml: lets Vault's SA call K8s TokenReview API
+#
+# Wrapped in its own ArgoCD Application (clusters/dev/bootstrap/
+# vault-rbac.yaml) so it can sync independently of the Helm Application.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - token-reviewer-rbac.yaml
